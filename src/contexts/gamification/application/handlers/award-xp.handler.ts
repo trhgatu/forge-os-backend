@@ -15,25 +15,21 @@ export class AwardXpHandler implements ICommandHandler<AwardXpCommand> {
 
   async execute(command: AwardXpCommand): Promise<void> {
     const { userId, amount, reason } = command;
+
     let stats = await this.userStatsRepository.findByUserId(userId);
 
     if (!stats) {
-      // Create new stats if first time
-      stats = new UserStats(userId, 0, 1, 'Novice', 0, new Date(), []);
+      stats = UserStats.create(userId);
     }
 
     stats.addXp(amount);
-    stats.updateStreak();
 
     await this.userStatsRepository.save(stats);
 
-    // Notify Frontend via Socket
     this.gamificationGateway.emitXpAwarded(userId, {
       xp: amount,
       newLevel: stats.level,
-      reason: reason || 'Action Completed',
+      reason: reason || 'XP Awarded',
     });
-
-    stats.commit();
   }
 }

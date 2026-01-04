@@ -19,30 +19,22 @@ export class MongoUserStatsRepository implements UserStatsRepository {
   }
 
   async save(stats: UserStats): Promise<void> {
-    await this.userStatsModel.findOneAndUpdate(
-      { userId: stats.userId },
-      {
-        userId: stats.userId,
-        xp: stats.xp,
-        level: stats.level,
-        title: stats.title,
-        streak: stats.streak,
-        lastActivityDate: stats.lastActivityDate,
-        achievements: stats.achievements,
-      },
-      { upsert: true, new: true },
-    );
+    const data = stats.toPersistence();
+    await this.userStatsModel.findOneAndUpdate({ userId: data.userId }, data, {
+      upsert: true,
+      new: true,
+    });
   }
 
   private toDomain(doc: UserStatsDocument): UserStats {
-    return new UserStats(
-      doc.userId,
-      doc.xp,
-      doc.level,
-      doc.title,
-      doc.streak,
-      doc.lastActivityDate,
-      doc.achievements,
-    );
+    return UserStats.createFromPersistence({
+      userId: doc.userId,
+      xp: doc.xp,
+      level: doc.level,
+      title: doc.title,
+      streak: doc.streak,
+      lastActivityDate: doc.lastActivityDate,
+      achievements: doc.achievements,
+    });
   }
 }

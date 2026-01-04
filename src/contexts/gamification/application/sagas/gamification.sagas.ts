@@ -8,16 +8,24 @@ import { AwardXpCommand } from '../commands/award-xp.command';
 
 @Injectable()
 export class GamificationSagas {
+  // Helper method to extract userId from events (handles both string and Value Object)
+  private extractUserId(userId: unknown): string {
+    if (typeof userId === 'string') {
+      return userId;
+    }
+    if (typeof userId === 'object' && userId !== null && 'value' in userId) {
+      return String((userId as { value: unknown }).value);
+    }
+    return String(userId);
+  }
   @Saga()
-  projectCreated = (events$: Observable<any>): Observable<ICommand> => {
+  projectCreated = (
+    events$: Observable<ProjectCreatedEvent>,
+  ): Observable<ICommand> => {
     return events$.pipe(
       ofType(ProjectCreatedEvent),
-      map((event) => {
-        // Ensure userId is string (handle Value Object from Domain)
-        const userId: string =
-          typeof event.userId === 'object' && 'value' in (event.userId as any)
-            ? (event.userId as any).value
-            : String(event.userId);
+      map((event: ProjectCreatedEvent) => {
+        const userId = this.extractUserId(event.userId);
 
         // Award 50 XP for creating a project
         return new AwardXpCommand(
@@ -31,20 +39,19 @@ export class GamificationSagas {
   };
 
   @Saga()
-  projectSynced = (events$: Observable<any>): Observable<ICommand> => {
+  projectSynced = (
+    events$: Observable<ProjectSyncedEvent>,
+  ): Observable<ICommand> => {
     return events$.pipe(
       ofType(ProjectSyncedEvent),
-      filter((event) => event.newCommitCount > 0), // Filter out zero-commit syncs
-      map((event) => {
+      filter((event: ProjectSyncedEvent) => event.newCommitCount > 0), // Filter out zero-commit syncs
+      map((event: ProjectSyncedEvent) => {
         const xpAmount = 10 + event.newCommitCount * 2; // Base 10 + 2 per commit
         const cap = 100; // Max 100 XP per sync
         const awardedXp = Math.min(xpAmount, cap);
 
-        // Ensure userId is string (handle Value Object from Domain)
-        const userId: string =
-          typeof event.userId === 'object' && 'value' in (event.userId as any)
-            ? (event.userId as any).value
-            : String(event.userId);
+        // Extract userId using helper method
+        const userId = this.extractUserId(event.userId);
 
         return new AwardXpCommand(
           userId,
