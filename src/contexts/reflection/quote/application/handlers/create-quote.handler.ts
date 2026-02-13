@@ -1,7 +1,4 @@
 import { CommandHandler, ICommandHandler, EventBus } from '@nestjs/cqrs';
-import { Inject } from '@nestjs/common';
-import { ObjectId } from 'mongodb';
-
 import { CreateQuoteCommand } from '../commands/create-quote.command';
 import { QuoteRepository } from '../ports/quote.repository';
 import { Quote } from '../../domain/quote.entity';
@@ -16,7 +13,6 @@ export class CreateQuoteHandler
   implements ICommandHandler<CreateQuoteCommand, QuoteResponse>
 {
   constructor(
-    @Inject('QuoteRepository')
     private readonly quoteRepo: QuoteRepository,
     private readonly eventBus: EventBus,
   ) {}
@@ -25,7 +21,7 @@ export class CreateQuoteHandler
     const { payload, lang } = command;
 
     const now = new Date();
-    const id = QuoteId.create(new ObjectId());
+    const quoteId = QuoteId.random();
 
     const quote = Quote.create(
       {
@@ -35,12 +31,13 @@ export class CreateQuoteHandler
         tags: payload.tags ?? [],
         status: payload.status ?? QuoteStatus.INTERNAL,
       },
-      id,
+      quoteId,
       now,
     );
 
     await this.quoteRepo.save(quote);
-    this.eventBus.publish(new QuoteModifiedEvent(id, 'create'));
+
+    this.eventBus.publish(new QuoteModifiedEvent(quoteId, 'create'));
 
     return QuotePresenter.toResponse(quote, lang);
   }

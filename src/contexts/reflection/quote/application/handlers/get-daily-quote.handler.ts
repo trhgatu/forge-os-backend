@@ -1,19 +1,20 @@
 import { IQueryHandler, QueryHandler } from '@nestjs/cqrs';
-import { GetRandomQuoteQuery } from '../queries/get-random-quote.query';
+import { GetDailyQuoteQuery } from '../queries/get-daily-quote.query';
 import { QuoteRepository } from '../ports/quote.repository';
 import { QuotePresenter } from '../../presentation/quote.presenter';
 
-@QueryHandler(GetRandomQuoteQuery)
-export class GetRandomQuoteHandler
-  implements IQueryHandler<GetRandomQuoteQuery>
-{
+@QueryHandler(GetDailyQuoteQuery)
+export class GetDailyQuoteHandler implements IQueryHandler<GetDailyQuoteQuery> {
   constructor(private readonly repository: QuoteRepository) {}
 
-  async execute(query: GetRandomQuoteQuery) {
-    const quote = await this.repository.findRandom();
+  async execute(query: GetDailyQuoteQuery) {
+    const today = new Date().toISOString().split('T')[0];
+    const quote = await this.repository.findDaily(today);
+
     if (!quote) {
       return null;
     }
+
     return QuotePresenter.toResponse(quote, query.lang);
   }
 }

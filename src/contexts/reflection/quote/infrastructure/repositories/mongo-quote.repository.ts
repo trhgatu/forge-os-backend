@@ -1,7 +1,8 @@
 import { InjectModel } from '@nestjs/mongoose';
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Model, FilterQuery } from 'mongoose';
-import { QuoteDocument } from '../quote.schema';
+import { Model, FilterQuery, Types } from 'mongoose';
+import { QuoteDocument, Quote as QuoteSchemaClass } from '../quote.schema';
+import { DailyQuoteDocument } from '../daily-quote.schema';
 import { QuoteRepository } from '../../application/ports/quote.repository';
 import { Quote } from '../../domain/quote.entity';
 import { QuoteId } from '../../domain/value-objects/quote-id.vo';
@@ -9,12 +10,60 @@ import { QuoteFilter } from '../../application/queries/quote-filter';
 import { QuoteMapper } from './quote.mapper';
 import { paginateDDD } from '@shared/utils/paginateDDD';
 import { PaginatedResult } from '@shared/types/paginated-result';
+import { MongoErrorUtils } from '@shared/database/mongo/utils/mongo-error.utils';
+
+import { Logger } from '@nestjs/common';
+import { DailyQuote } from '../daily-quote.schema';
 
 @Injectable()
 export class MongoQuoteRepository implements QuoteRepository {
+  private readonly logger = new Logger(MongoQuoteRepository.name);
+
   constructor(
-    @InjectModel('Quote') private readonly model: Model<QuoteDocument>,
+    @InjectModel(QuoteSchemaClass.name)
+    private readonly model: Model<QuoteDocument>,
+    @InjectModel(DailyQuote.name)
+    private readonly dailyModel: Model<DailyQuoteDocument>,
   ) {}
+
+  async findDaily(date: string): Promise<Quote | null> {
+    const daily = await this.dailyModel.findOne({ date });
+
+    if (daily) {
+      const quote = await this.model.findOne({
+        _id: daily.quoteId,
+        isDeleted: false,
+      });
+
+      if (quote) {
+        return QuoteMapper.toDomain(quote);
+      }
+    }
+
+    const randomQuote = await this.findRandom();
+    if (!randomQuote) return null;
+    if (daily) {
+      daily.quoteId = new Types.ObjectId(randomQuote.id.toString());
+      await daily.save();
+    } else {
+      try {
+        await this.dailyModel.create({
+          date,
+          quoteId: new Types.ObjectId(randomQuote.id.toString()),
+        });
+      } catch (error: unknown) {
+        if (MongoErrorUtils.isDuplicateKeyError(error)) {
+          this.logger.warn(
+            `Race condition detected for date ${date}. Retrying...`,
+          );
+          return this.findDaily(date);
+        }
+        throw error;
+      }
+    }
+
+    return randomQuote;
+  }
 
   async save(quote: Quote): Promise<void> {
     const doc = QuoteMapper.toPersistence(quote);
@@ -35,7 +84,7 @@ export class MongoQuoteRepository implements QuoteRepository {
     const skip = (page - 1) * limit;
 
     const filter: FilterQuery<QuoteDocument> = {
-      isDeleted: query.isDeleted ?? false,
+      ...(query.isDeleted !== undefined && { isDeleted: query.isDeleted }),
       ...(query.keyword && {
         'content.en': { $regex: query.keyword, $options: 'i' },
       }),
